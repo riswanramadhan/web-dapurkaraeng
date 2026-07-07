@@ -9,26 +9,38 @@ document.addEventListener('DOMContentLoaded', () => {
   const navMenu = document.getElementById('navMenu');
 
   if (navToggle && navMenu) {
-    navToggle.addEventListener('click', () => {
-      const isOpen = navMenu.classList.toggle('open');
-      navToggle.classList.toggle('open');
+    const setMenuOpen = (isOpen) => {
+      navMenu.classList.toggle('open', isOpen);
+      navToggle.classList.toggle('open', isOpen);
       navToggle.setAttribute('aria-expanded', isOpen);
+      navToggle.setAttribute('aria-label', isOpen ? 'Tutup menu' : 'Buka menu');
+      document.body.classList.toggle('nav-open', isOpen);
+    };
+
+    navToggle.addEventListener('click', () => {
+      setMenuOpen(!navMenu.classList.contains('open'));
     });
 
     // Close menu when clicking a link
-    const navLinks = document.querySelectorAll('.nav-link');
+    const navLinks = navMenu.querySelectorAll('a');
     navLinks.forEach(link => {
       link.addEventListener('click', () => {
-        navMenu.classList.remove('open');
-        navToggle.classList.remove('open');
-        navToggle.setAttribute('aria-expanded', 'false');
+        setMenuOpen(false);
       });
+    });
+
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && navMenu.classList.contains('open')) {
+        setMenuOpen(false);
+      }
     });
   }
 
   // --- STICKY NAVBAR & BACK TO TOP ---
   const navbar = document.getElementById('navbar');
   const backToTop = document.getElementById('backToTop');
+  const floatWa = document.getElementById('floatWa');
+  const floatIg = document.getElementById('floatIg');
 
   window.addEventListener('scroll', () => {
     const scrollPos = window.scrollY;
@@ -211,9 +223,150 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     }
 
+    let touchStartX = 0;
+    let touchStartY = 0;
+    let isSwiping = false;
+
+    track.addEventListener('touchstart', (event) => {
+      const touch = event.touches[0];
+      touchStartX = touch.clientX;
+      touchStartY = touch.clientY;
+      isSwiping = true;
+    }, { passive: true });
+
+    track.addEventListener('touchend', (event) => {
+      if (!isSwiping) return;
+      const touch = event.changedTouches[0];
+      const deltaX = touch.clientX - touchStartX;
+      const deltaY = touch.clientY - touchStartY;
+      isSwiping = false;
+
+      if (Math.abs(deltaX) < 45 || Math.abs(deltaX) < Math.abs(deltaY)) return;
+
+      if (deltaX < 0 && currentIndex < getMaxIndex()) {
+        currentIndex++;
+        slideTo(currentIndex);
+      }
+
+      if (deltaX > 0 && currentIndex > 0) {
+        currentIndex--;
+        slideTo(currentIndex);
+      }
+    }, { passive: true });
+
     // Initialize slider
     updateDots();
     slideTo(0);
+  }
+
+  // --- MOBILE PRODUCTS CAROUSEL ---
+  const productsCarousel = document.getElementById('productsCarousel');
+  const productPrev = document.getElementById('productPrev');
+  const productNext = document.getElementById('productNext');
+  const productDots = document.getElementById('productDots');
+
+  if (productsCarousel) {
+    const productCards = Array.from(productsCarousel.querySelectorAll('.product-card'));
+    let productScrollTicking = false;
+
+    const getProductStep = () => {
+      const firstCard = productCards[0];
+      if (!firstCard) return productsCarousel.clientWidth;
+      const styles = window.getComputedStyle(productsCarousel);
+      const gap = parseFloat(styles.columnGap || styles.gap || '16') || 16;
+      return firstCard.getBoundingClientRect().width + gap;
+    };
+
+    const getProductIndex = () => {
+      const step = getProductStep();
+      if (!step) return 0;
+      return Math.max(0, Math.min(productCards.length - 1, Math.round(productsCarousel.scrollLeft / step)));
+    };
+
+    const updateProductNav = () => {
+      const currentIndex = getProductIndex();
+      if (productPrev) productPrev.disabled = currentIndex <= 0;
+      if (productNext) productNext.disabled = currentIndex >= productCards.length - 1;
+
+      if (productDots) {
+        productDots.querySelectorAll('.product-carousel-dot').forEach((dot, index) => {
+          dot.classList.toggle('active', index === currentIndex);
+        });
+      }
+    };
+
+    const scrollProductTo = (index) => {
+      const boundedIndex = Math.max(0, Math.min(productCards.length - 1, index));
+      productsCarousel.scrollTo({
+        left: boundedIndex * getProductStep(),
+        behavior: 'smooth'
+      });
+    };
+
+    if (productDots && productCards.length > 0) {
+      productDots.innerHTML = '';
+      productCards.forEach((_, index) => {
+        const dot = document.createElement('span');
+        dot.className = 'product-carousel-dot';
+        dot.addEventListener('click', () => scrollProductTo(index));
+        productDots.appendChild(dot);
+      });
+    }
+
+    if (productPrev) {
+      productPrev.addEventListener('click', () => {
+        scrollProductTo(getProductIndex() - 1);
+      });
+    }
+
+    if (productNext) {
+      productNext.addEventListener('click', () => {
+        scrollProductTo(getProductIndex() + 1);
+      });
+    }
+
+    productsCarousel.addEventListener('scroll', () => {
+      if (productScrollTicking) return;
+      productScrollTicking = true;
+      window.requestAnimationFrame(() => {
+        updateProductNav();
+        productScrollTicking = false;
+      });
+    }, { passive: true });
+
+    window.addEventListener('resize', updateProductNav);
+    updateProductNav();
+  }
+
+  // --- HIDE FLOATING SOCIAL BUTTONS OVER FOOTER ---
+  const footer = document.getElementById('footer');
+  const floatingSocialButtons = [floatWa, floatIg].filter(Boolean);
+
+  if (footer && floatingSocialButtons.length > 0) {
+    const setFloatingButtonsHidden = (isHidden) => {
+      floatingSocialButtons.forEach(button => {
+        button.classList.toggle('footer-hidden', isHidden);
+      });
+    };
+
+    if ('IntersectionObserver' in window) {
+      const footerObserver = new IntersectionObserver((entries) => {
+        setFloatingButtonsHidden(entries.some(entry => entry.isIntersecting));
+      }, {
+        threshold: 0.04
+      });
+
+      footerObserver.observe(footer);
+    } else {
+      const updateFooterVisibility = () => {
+        const rect = footer.getBoundingClientRect();
+        setFloatingButtonsHidden(rect.top < window.innerHeight && rect.bottom > 0);
+      };
+
+      window.addEventListener('scroll', updateFooterVisibility, { passive: true });
+      window.addEventListener('resize', updateFooterVisibility);
+      updateFooterVisibility();
+    }
   }
 
   // --- FAQ ACCORDION ---
